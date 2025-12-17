@@ -10,6 +10,7 @@
 # Options:
 #   -u, --username          Enterprise Inference owner username (required)
 #   -t, --token            Hugging Face token (required)
+#   -p, --password         User sudo password for Ansible (default: Linux123!)
 #   -g, --gpu-type         GPU type: 'gaudi3' or 'cpu' (default: gaudi3)
 #   -m, --models           Model IDs to deploy, comma-separated (default: "1,5")
 #   -b, --branch            Git branch to clone (default: dell-deploy)
@@ -26,6 +27,7 @@ set -euo pipefail
 # Default values
 USERNAME="user"
 HF_TOKEN="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"
+USER_PASSWORD="Linux123!"
 GPU_TYPE="gaudi3"
 MODELS="1,5"
 BRANCH="dell-deploy-1.3"
@@ -68,6 +70,7 @@ Required Options:
   -t, --token            Hugging Face token
 
 Optional Options:
+  -p, --password         User sudo password for Ansible (default: Linux123!)
   -g, --gpu-type         GPU type: 'gaudi3' or 'cpu' (default: gaudi3)
   -m, --models           Model IDs to deploy, comma-separated (default: "1,5")
   -b, --branch            Git branch to clone (default: dell-deploy)
@@ -91,6 +94,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -t|--token)
             HF_TOKEN="$2"
+            shift 2
+            ;;
+        -p|--password)
+            USER_PASSWORD="$2"
             shift 2
             ;;
         -g|--gpu-type)
@@ -169,6 +176,7 @@ save_state() {
 LAST_COMPLETED_STEP="$step"
 USERNAME="$USERNAME"
 HF_TOKEN="$HF_TOKEN"
+USER_PASSWORD="$USER_PASSWORD"
 GPU_TYPE="$GPU_TYPE"
 MODELS="$MODELS"
 BRANCH="$BRANCH"
@@ -264,8 +272,8 @@ main() {
         
         if [[ -d "$INVENTORY_DIR" ]]; then
             BECOME_PASSFILE="${INVENTORY_DIR}/.become-passfile"
-            # Create empty passfile (NOPASSWD is configured in Step 8)
-            echo '' > "$BECOME_PASSFILE"
+            # Create passfile with user password for Ansible
+            echo "${USER_PASSWORD}" > "$BECOME_PASSFILE"
             chown "${USERNAME}:${USERNAME}" "$BECOME_PASSFILE"
             chmod 600 "$BECOME_PASSFILE"
             log_success "Ansible become-passfile created at ${BECOME_PASSFILE}"
@@ -423,13 +431,17 @@ main() {
         if [[ -d "$INVENTORY_DIR" ]]; then
             BECOME_PASSFILE="${INVENTORY_DIR}/.become-passfile"
             if [[ ! -f "$BECOME_PASSFILE" ]]; then
-                # Create empty passfile since we configured NOPASSWD
-                echo '' > "$BECOME_PASSFILE"
+                # Create passfile with user password for Ansible
+                echo "${USER_PASSWORD}" > "$BECOME_PASSFILE"
                 chown "${USERNAME}:${USERNAME}" "$BECOME_PASSFILE"
                 chmod 600 "$BECOME_PASSFILE"
                 log_info "Ansible become-passfile created"
             else
-                log_info "Ansible become-passfile already exists"
+                # Update passfile with current password
+                echo "${USER_PASSWORD}" > "$BECOME_PASSFILE"
+                chown "${USERNAME}:${USERNAME}" "$BECOME_PASSFILE"
+                chmod 600 "$BECOME_PASSFILE"
+                log_info "Ansible become-passfile updated"
             fi
         else
             log_warn "Inventory directory not found at ${INVENTORY_DIR}"
